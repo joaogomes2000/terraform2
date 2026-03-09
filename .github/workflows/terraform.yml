@@ -11,10 +11,10 @@ on:
                 required: true
             aws-statefile-s3-bucket:
                 type: string
-                required: true
+                required: false
             aws-lock-dynamodb-table:
                 type: string
-                required: true
+                required: false
             aws-region:
                 type: string
                 required: true
