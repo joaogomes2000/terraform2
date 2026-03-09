@@ -8,7 +8,8 @@ on:
 
 permissions:
     id-token: write
-    contents: read
+    contents: write
+    pull-requests: write
 
 
 jobs:
@@ -21,3 +22,26 @@ jobs:
             aws-statefile-s3-bucket: "joaogomes2000-eu-noth-1-terraform-statefile"
             aws-lock-dynamodb-table: "joaogomes2000-eu-north-1-terraform-lock"
      
+        
+    create-pr:
+        needs: terraform
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+            
+            - name: Create PR
+              run: |
+                gh pr create \
+                --base main \
+                --head int \
+                --title "Auto promote int -> main" \
+                --body "Automatic promotion"
+              env:
+                GH_TOKEN: ${{ secrets.PAT_GITHUB }}
+
+            - name: Merge PR
+              run: |
+                gh pr merge int --merge --auto
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
