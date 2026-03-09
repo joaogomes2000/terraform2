@@ -38,7 +38,7 @@ jobs:
                 --title "Auto promote int -> main" \
                 --body "Automatic promotion"
               env:
-                GH_TOKEN: ${{ secrets.PAT_GITHUB }}
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
             - name: Merge PR
               run: |
