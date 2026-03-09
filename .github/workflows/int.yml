@@ -38,3 +38,8 @@ jobs:
                 branch: int
                 title: "Auto PR: int → main"
                 body: "PR automático após deploy em int"
+            - name: Merge PR
+              run: |
+                gh pr merge int --merge --auto
+              env:
+                GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
