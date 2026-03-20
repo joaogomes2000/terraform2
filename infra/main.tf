@@ -47,7 +47,7 @@ resource "aws_lambda_function" "main" {
 
   environment {
     variables = {
-      LOG_LEVEL = var.log_level
+      LOG_LEVEL = var.LOG_LEVEL
     }
   }
 }
