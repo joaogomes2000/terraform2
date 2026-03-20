@@ -14,7 +14,7 @@ variable "lambda_zip_path" {
   default     = "../build/lambda.zip"
 }
 
-variable "LOG_LEVEL" {
+variable "log_level" {
   description = "Nível de log da Lambda (DEBUG, INFO, WARNING, ERROR)"
   type        = string
   default     = "INFO"
