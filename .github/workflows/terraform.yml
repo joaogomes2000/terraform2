@@ -20,12 +20,9 @@ on:
                 required: true
 
 
-
-
 jobs:
     terraform:
         runs-on: ubuntu-latest
-
 
         defaults:
             run:
@@ -34,12 +31,12 @@ jobs:
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
-            
+
             - name: Setup terraform
               uses: hashicorp/setup-terraform@v3
               with:
                 terraform_version: 1.14.4
-            
+
             - name: Configure AWS credentials
               uses: aws-actions/configure-aws-credentials@v4
               with:
@@ -47,12 +44,24 @@ jobs:
                 role-session-name: Github_to_AWS_via_FederatedOIDC
                 aws-region: ${{ inputs.aws-region }}
 
+            # ✅ NOVO — lê o bucket do tfvars
+            - name: Read bucket name
+              id: bucket
+              run: |
+                BUCKET=$(grep 'bucket_name' infra/envs/${{ inputs.environment }}/terraform.tfvars \
+                  | head -1 | sed 's/.*=\s*"\(.*\)"/\1/')
+                echo "name=$BUCKET" >> $GITHUB_OUTPUT
+
+            # ✅ NOVO — cria os ZIPs e faz upload para S3 antes do Terraform
+            - name: Build and upload ZIPs to S3
+              run: bash build.sh "${{ steps.bucket.outputs.name }}"
+
             - name: Read destroy configuraton
               id: read-destroy-config
               run: |
                 DESTROY=$(jq -r '.${{ inputs.environment}}' ./infra/destroy_config.json)
                 echo "destroy=$(echo $DESTROY)" >> $GITHUB_OUTPUT
-            
+
             - name: Terraform Init
               run: |
                 cd infra && terraform init \
@@ -60,9 +69,10 @@ jobs:
                     -backend-config="key=${{ github.event.repository.name }}" \
                     -backend-config="region=${{ inputs.aws-region }}" \
                     -backend-config="dynamodb_table=${{ inputs.aws-lock-dynamodb-table }}"
-    
+
+            # ✅ CORRIGIDO — adicionado "cd infra &&" (estava em falta)
             - name: Terraform Validate
-              run: terraform validate
+              run: cd infra && terraform validate
 
             - name: Terraform Destroy
               if: steps.read-destroy-config.outputs.destroy == 'true'
@@ -77,7 +87,7 @@ jobs:
               run: cd infra &&
                 terraform workspace select ${{ inputs.environment }} || terraform workspace new ${{ inputs.environment }} &&
                 terraform plan -var-file="./envs/${{ inputs.environment }}/terraform.tfvars" -out="${{ inputs.environment }}.plan"
-            
+
             - name: Terraform Apply
               if: steps.read-destroy-config.outputs.destroy != 'true'
               id: terraform-apply
