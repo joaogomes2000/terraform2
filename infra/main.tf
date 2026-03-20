@@ -2,34 +2,25 @@ resource "aws_s3_bucket" "bucket" {
   bucket = var.bucket_name
 }
 
-# ─── S3: upload dos ZIPs (gerados pelo build.sh no CI) ───────────────────────
+# ─── Lambda Layer: utils ──────────────────────────────────────────────────────
+# O ZIP já foi uploaded pelo build.sh antes do Terraform correr.
+# Usamos data source para ler o etag do S3 — sem ficheiros locais.
 
-resource "aws_s3_object" "utils_layer_zip" {
-  bucket = aws_s3_bucket.bucket.id
+data "aws_s3_object" "utils_layer_zip" {
+  bucket = var.bucket_name
   key    = "layers/utils_layer.zip"
-  source = var.utils_layer_zip_path
-  etag   = filemd5(var.utils_layer_zip_path)
-}
 
-resource "aws_s3_object" "lambda_zip" {
-  bucket = aws_s3_bucket.bucket.id
-  key    = "functions/lambda.zip"
-  source = var.lambda_zip_path
-  etag   = filemd5(var.lambda_zip_path)
+  depends_on = [aws_s3_bucket.bucket]
 }
-
-# ─── Lambda Layer: utils (logging_utils) ─────────────────────────────────────
 
 resource "aws_lambda_layer_version" "utils_layer" {
-  s3_bucket         = aws_s3_bucket.bucket.id
-  s3_key            = aws_s3_object.utils_layer_zip.key
+  s3_bucket         = var.bucket_name
+  s3_key            = "layers/utils_layer.zip"
   layer_name        = "${terraform.workspace}-utils-layer"
   compatible_runtimes = ["python3.12"]
-  source_code_hash  = filebase64sha256(var.utils_layer_zip_path)
+  source_code_hash  = data.aws_s3_object.utils_layer_zip.etag
 
   description = "Shared utils layer (logging_utils)"
-
-  depends_on = [aws_s3_object.utils_layer_zip]
 }
 
 # ─── IAM Role para a Lambda ───────────────────────────────────────────────────
@@ -54,14 +45,21 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_logs" {
 
 # ─── Lambda Function ──────────────────────────────────────────────────────────
 
+data "aws_s3_object" "lambda_zip" {
+  bucket = var.bucket_name
+  key    = "functions/lambda.zip"
+
+  depends_on = [aws_s3_bucket.bucket]
+}
+
 resource "aws_lambda_function" "main" {
-  s3_bucket        = aws_s3_bucket.bucket.id
-  s3_key           = aws_s3_object.lambda_zip.key
+  s3_bucket        = var.bucket_name
+  s3_key           = "functions/lambda.zip"
   function_name    = "${terraform.workspace}-main-lambda"
   role             = aws_iam_role.lambda_role.arn
   handler          = "main.lambda_handler"
   runtime          = "python3.12"
-  source_code_hash = filebase64sha256(var.lambda_zip_path)
+  source_code_hash = data.aws_s3_object.lambda_zip.etag
 
   layers = [aws_lambda_layer_version.utils_layer.arn]
 
@@ -70,6 +68,4 @@ resource "aws_lambda_function" "main" {
       LOG_LEVEL = var.log_level
     }
   }
-
-  depends_on = [aws_s3_object.lambda_zip]
 }
