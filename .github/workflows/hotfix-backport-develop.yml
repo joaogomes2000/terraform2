@@ -1,0 +1,82 @@
+name: "HOTFIX_BACKPORT_TO_DEVELOP"
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  cherry-pick-hotfix-to-develop:
+    if: >
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'hotfix/')
+    runs-on: ubuntu-latest
+
+    env:
+      TARGET_BRANCH: develop
+      SOURCE_BRANCH: ${{ github.event.pull_request.head.ref }}
+      SOURCE_PR_NUMBER: ${{ github.event.pull_request.number }}
+      SOURCE_PR_TITLE: ${{ github.event.pull_request.title }}
+      CHERRY_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create backport branch
+        id: branch
+        run: |
+          BRANCH_NAME="chore/hotfix-backport-${SOURCE_PR_NUMBER}-$(date +%Y%m%d%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          echo "branch_name=$BRANCH_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Cherry-pick merged hotfix
+        run: |
+          echo "Cherry-picking commit: $CHERRY_SHA"
+
+          PARENT_COUNT=$(git rev-list --parents -n 1 "$CHERRY_SHA" | awk '{print NF-1}')
+
+          if [ "$PARENT_COUNT" -gt 1 ]; then
+            echo "Detected merge commit. Using cherry-pick -m 1"
+            git cherry-pick -m 1 "$CHERRY_SHA"
+          else
+            echo "Detected regular commit. Using normal cherry-pick"
+            git cherry-pick "$CHERRY_SHA"
+          fi
+
+      - name: Push backport branch
+        run: |
+          git push origin "${{ steps.branch.outputs.branch_name }}"
+
+      - name: Create PR to develop
+        run: |
+          gh pr create \
+            --base "$TARGET_BRANCH" \
+            --head "${{ steps.branch.outputs.branch_name }}" \
+            --title "chore: backport hotfix #${SOURCE_PR_NUMBER} to ${TARGET_BRANCH}" \
+            --body "## Automatic hotfix backport
+
+          This PR was created automatically after merging a hotfix into \`main\`.
+
+          - Source PR: #${SOURCE_PR_NUMBER}
+          - Source branch: \`${SOURCE_BRANCH}\`
+          - Source title: \`${SOURCE_PR_TITLE}\`
+          - Cherry-picked SHA: \`${CHERRY_SHA}\`
+
+          Please review and merge this PR into \`${TARGET_BRANCH}\`."
+
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
